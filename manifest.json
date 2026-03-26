@@ -1,0 +1,18 @@
+{
+    "name": "MiyingTV",
+    "short_name": "MiyingTV",
+    "description": "影视流媒体资源搜索平台 - 自由、纯净、无广告",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0f1622",
+    "theme_color": "#000000",
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "black",
+    "icons": [
+      {
+        "src": "image/logo-black.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  }
