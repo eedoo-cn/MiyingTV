@@ -238,71 +238,11 @@ function initializePageContent() {
     document.getElementById('videoTitle').textContent = currentVideoTitle;
 
     // 初始化播放器
-const adManager = new AdManager();
-let art;
-let hasClicked = false;
-
-// 初始化播放器
-async function initPlayer(videoUrl) {
-
-    const adUrl = await adManager.getAd();
-
-    art = new Artplayer({
-        container: '#player',
-        url: adUrl || videoUrl,
-        autoplay: true,
-        muted: true
-    });
-
-    // ===== 前贴片逻辑 =====
-    if (adUrl) {
-
-        let skipBtn;
-
-        // 5秒跳过
-        setTimeout(() => {
-            skipBtn = document.createElement('button');
-            skipBtn.innerText = '跳过广告';
-
-            skipBtn.style = `
-                position:absolute;
-                right:20px;
-                bottom:60px;
-                z-index:9999;
-                padding:6px 10px;
-                background:rgba(0,0,0,0.6);
-                color:#fff;
-                border:none;
-                cursor:pointer;
-            `;
-
-            skipBtn.onclick = () => {
-                art.switchUrl(videoUrl);
-                skipBtn.remove();
-            };
-
-            document.body.appendChild(skipBtn);
-        }, 5000);
-
-        // 广告播完
-        art.on('video:ended', () => {
-            art.switchUrl(videoUrl);
-            if (skipBtn) skipBtn.remove();
-            art.muted = false;
-        });
+    if (videoUrl) {
+        initPlayer(videoUrl);
+    } else {
+        showError('无效的视频链接');
     }
-}
-
-// ===== 点击弹窗广告 =====
-document.getElementById('player').addEventListener('click', () => {
-    if (!hasClicked) {
-        hasClicked = true;
-        adManager.showPop();
-    }
-});
-
-// ===== 启动 =====
-initPlayer(window.videoUrl);
 
     // 更新集数信息
     updateEpisodeInfo();
@@ -449,90 +389,76 @@ function initPlayer(videoUrl) {
         liveSyncDurationCount: 3,
         liveDurationInfinity: false
     };
+// ====== VAST 广告逻辑开始 ======
+const adContainer = document.getElementById('ad-container');
+
+function playVastAd(callback) {
+    adContainer.style.display = 'block';
+
+    const adDisplayContainer = new google.ima.AdDisplayContainer(adContainer);
+    const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+
+    const adsRequest = new google.ima.AdsRequest();
+    adsRequest.adTagUrl = 'https://s.magsrv.com/v1/vast.php?idzone=5883894';
+
+    adsRequest.linearAdSlotWidth = adContainer.offsetWidth;
+    adsRequest.linearAdSlotHeight = adContainer.offsetHeight;
+
+    adsLoader.addEventListener(
+        google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+        function (adsManagerLoadedEvent) {
+            const adsManager = adsManagerLoadedEvent.getAdsManager();
+
+            try {
+                adsManager.init(
+                    adContainer.offsetWidth,
+                    adContainer.offsetHeight,
+                    google.ima.ViewMode.NORMAL
+                );
+                adsManager.start();
+            } catch (e) {
+                console.log('广告播放失败', e);
+                callback();
+            }
+
+            adsManager.addEventListener(
+                google.ima.AdEvent.Type.COMPLETE,
+                function () {
+                    adContainer.style.display = 'none';
+                    callback();
+                }
+            );
+        }
+    );
+
+    adsLoader.addEventListener(
+        google.ima.AdErrorEvent.Type.AD_ERROR,
+        function () {
+            adContainer.style.display = 'none';
+            callback();
+        }
+    );
+
+    adDisplayContainer.initialize();
+    adsLoader.requestAds(adsRequest);
+}
+// ====== VAST 广告逻辑结束 ======
 
     // Create new ArtPlayer instance
-    // ===== VAST广告地址 =====
-const vastUrl = 'https://prime-president.com/dAmeF.zsdBG/NRvsZsG/UW/xehm/9iu/ZaUZlik_P/TLYc5AMPDKQn4dNuD/U/t/NCjCkxw/NiDag-0SOeSAZWsPajWc1epddzDt0zxt';
+    playVastAd(function () {
 
-// 解析VAST获取广告视频
-async function getVastAdUrl(vastUrl) {
-    try {
-        const res = await fetch(vastUrl);
-        const text = await res.text();
+    art = new Artplayer({
+        container: '#player',
+        url: videoUrl,
+        type: 'm3u8',
+        title: videoTitle,
+        autoplay: true,
+        // 其他配置不动
+    });
 
-        // 提取 <MediaFile> 视频地址
-        const match = text.match(/<MediaFile.*?><!\[CDATA\[(.*?)\]\]><\/MediaFile>/);
-
-        if (match && match[1]) {
-            return match[1];
-        }
-
-        return null;
-    } catch (e) {
-        console.error('VAST解析失败:', e);
-        return null;
-    }
-}
-
-// 初始化播放器（带广告）
-async function initPlayerWithAd(videoUrl, videoTitle) {
-    const adUrl = await getVastAdUrl(vastUrl);
-
-    // 如果有广告 → 先播广告
-    if (adUrl) {
-        console.log('播放前贴片广告:', adUrl);
-
-        art = new Artplayer({
-            container: '#player',
-            url: adUrl,
-            volume: 0.8,
-            autoplay: true,
-            muted: true, // 防止浏览器拦截
-        });
-
-        // 广告播放结束 → 切正片
-        art.on('video:ended', () => {
-            console.log('广告结束，播放正片');
-
-            art.switchUrl(videoUrl);
-            art.muted = false;
-        });
-
-        // 5秒后允许跳过
-        setTimeout(() => {
-            let skipBtn = document.createElement('button');
-            skipBtn.innerText = '跳过广告';
-            skipBtn.style = `
-                position:absolute;
-                right:20px;
-                bottom:60px;
-                z-index:9999;
-                padding:8px 12px;
-                background:rgba(0,0,0,0.6);
-                color:#fff;
-                border:none;
-                cursor:pointer;
-            `;
-
-            skipBtn.onclick = () => {
-                art.switchUrl(videoUrl);
-                skipBtn.remove();
-            };
-
-            document.body.appendChild(skipBtn);
-        }, 5000);
-
-    } else {
-        console.log('无广告，直接播放');
-        
-        art = new Artplayer({
-            container: '#player',
-            url: videoUrl,
-            volume: 0.8,
-            autoplay: true
-        });
-    }
-}
+});
+        container: '#player',
+        url: videoUrl,
         type: 'm3u8',
         title: videoTitle,
         volume: 0.8,
@@ -1493,16 +1419,3 @@ function closeEmbeddedPlayer() {
     }
     return false;
 }
-
-// ===== 弹窗广告（只触发一次）=====
-let popShown = false;
-
-document.getElementById('player').addEventListener('click', function () {
-    if (!popShown) {
-        popShown = true;
-
-        let script = document.createElement('script');
-        script.src = "https://prime-president.com/dIm.FazUdQG/NRvlZxGPUh/reum/9UuCZNUdlfkcPYTIYK5tMdDYQc4/N/DEUotKNgj/kZwxNXDqg/0JOdS/ZustaTWK1PpUdNDw0-xu";
-        document.body.appendChild(script);
-    }
-});
