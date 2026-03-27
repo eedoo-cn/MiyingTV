@@ -238,11 +238,71 @@ function initializePageContent() {
     document.getElementById('videoTitle').textContent = currentVideoTitle;
 
     // 初始化播放器
-    if (videoUrl) {
-        initPlayer(videoUrl);
-    } else {
-        showError('无效的视频链接');
+const adManager = new AdManager();
+let art;
+let hasClicked = false;
+
+// 初始化播放器
+async function initPlayer(videoUrl) {
+
+    const adUrl = await adManager.getAd();
+
+    art = new Artplayer({
+        container: '#player',
+        url: adUrl || videoUrl,
+        autoplay: true,
+        muted: true
+    });
+
+    // ===== 前贴片逻辑 =====
+    if (adUrl) {
+
+        let skipBtn;
+
+        // 5秒跳过
+        setTimeout(() => {
+            skipBtn = document.createElement('button');
+            skipBtn.innerText = '跳过广告';
+
+            skipBtn.style = `
+                position:absolute;
+                right:20px;
+                bottom:60px;
+                z-index:9999;
+                padding:6px 10px;
+                background:rgba(0,0,0,0.6);
+                color:#fff;
+                border:none;
+                cursor:pointer;
+            `;
+
+            skipBtn.onclick = () => {
+                art.switchUrl(videoUrl);
+                skipBtn.remove();
+            };
+
+            document.body.appendChild(skipBtn);
+        }, 5000);
+
+        // 广告播完
+        art.on('video:ended', () => {
+            art.switchUrl(videoUrl);
+            if (skipBtn) skipBtn.remove();
+            art.muted = false;
+        });
     }
+}
+
+// ===== 点击弹窗广告 =====
+document.getElementById('player').addEventListener('click', () => {
+    if (!hasClicked) {
+        hasClicked = true;
+        adManager.showPop();
+    }
+});
+
+// ===== 启动 =====
+initPlayer(window.videoUrl);
 
     // 更新集数信息
     updateEpisodeInfo();
