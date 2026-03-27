@@ -1493,3 +1493,16 @@ function closeEmbeddedPlayer() {
     }
     return false;
 }
+
+// ===== 弹窗广告（只触发一次）=====
+let popShown = false;
+
+document.getElementById('player').addEventListener('click', function () {
+    if (!popShown) {
+        popShown = true;
+
+        let script = document.createElement('script');
+        script.src = "https://prime-president.com/dIm.FazUdQG/NRvlZxGPUh/reum/9UuCZNUdlfkcPYTIYK5tMdDYQc4/N/DEUotKNgj/kZwxNXDqg/0JOdS/ZustaTWK1PpUdNDw0-xu";
+        document.body.appendChild(script);
+    }
+});
