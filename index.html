@@ -360,7 +360,20 @@
             </div>
         </div>
     </div>
-
+<script>
+document.addEventListener('error', function (e) {
+    var elem = e.target;
+    if (elem.tagName.toLowerCase() === 'img') {
+        var src = elem.src;
+        // 检查是否为豆瓣域名且尚未经过代理处理
+        if (src.includes('doubanio.com') && !src.includes('images.weserv.nl')) {
+            console.warn('检测到豆瓣图片加载失败，正在尝试通过 weserv 代理镜像...', src);
+            // 拼接 weserv 代理地址，并加上缓存及压缩参数（可选）
+            elem.src = 'https://images.weserv.nl/?url=' + encodeURIComponent(src) + '&default=' + encodeURIComponent(src);
+        }
+    }
+}, true); // 使用事件捕获，确保能监听到所有图片的 error 事件
+</script>
 
 
     <!-- 错误提示框 -->
