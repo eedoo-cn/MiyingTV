@@ -14,6 +14,7 @@
     <script src="js/wakelock.js"></script>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/player.css">
+    <link rel="stylesheet" href="libs/DPlayer.min.css">
     
     <!-- Add optimized player loading styles -->
     <style>
@@ -98,8 +99,8 @@
         100% { transform: rotate(360deg); }
       }
       
-      /* ArtPlayer specific styles */
-      .art-video-player, .art-video-player video {
+      /* DPlayer specific styles */
+      .dplayer, .dplayer video {
         width: 100% !important;
         height: 100% !important;
         min-height: 150px !important;
@@ -112,13 +113,13 @@
     
       /* Fix for Chrome-specific issues */
       @media screen and (-webkit-min-device-pixel-ratio: 0) {
-        .art-video-player video {
+        .dplayer video {
           transform: translateZ(0) !important;
           will-change: transform !important;
         }
     
         /* Force visibility of video element */
-        .art-video-player.art-playing video {
+        .dplayer.dplayer-playing video {
           visibility: visible !important;
           opacity: 1 !important;
         }
@@ -327,7 +328,7 @@
     </script>
     
     <script src="libs/hls.min.js" crossorigin="anonymous"></script>
-    <script src="libs/artplayer.min.js" crossorigin="anonymous"></script>
+    <script src="libs/DPlayer.min.js" crossorigin="anonymous"></script>
 
     <script src="js/config.js"></script>
     <script src="js/password.js"></script>
