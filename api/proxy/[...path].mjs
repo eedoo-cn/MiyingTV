@@ -7,6 +7,9 @@ import { URL } from 'url'; // 使用 Node.js 内置 URL 处理
 const DEBUG_ENABLED = process.env.DEBUG === 'true';
 const CACHE_TTL = parseInt(process.env.CACHE_TTL || '86400', 10); // 默认 24 小时
 const MAX_RECURSION = parseInt(process.env.MAX_RECURSION || '5', 10); // 默认 5 层
+const IMAGE_CACHE_TTL = parseInt(process.env.IMAGE_CACHE_TTL || '604800', 10);
+const DOUBAN_IMAGE_RETRIES = parseInt(process.env.DOUBAN_IMAGE_RETRIES || '2', 10);
+const imageCache = new Map();
 
 // --- User Agent 处理 ---
 // 默认 User Agent 列表
@@ -133,6 +136,42 @@ function rewriteUrlToProxy(targetUrl) {
 
 function getRandomUserAgent() {
     return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+function isImageUrl(targetUrl) {
+    return /\.(jpg|jpeg|png|gif|webp|bmp|svg|avif|heic)(\?|$)/i.test(targetUrl);
+}
+
+function isDoubanImageUrl(targetUrl) {
+    try {
+        const parsedUrl = new URL(targetUrl);
+        return /(^|\.)doubanio\.com$/i.test(parsedUrl.hostname) && isImageUrl(targetUrl);
+    } catch {
+        return false;
+    }
+}
+
+function getImageCacheHeaders() {
+    return `public, max-age=86400, s-maxage=${IMAGE_CACHE_TTL}, stale-while-revalidate=86400, stale-if-error=2592000`;
+}
+
+function getPlaceholderBuffer() {
+    return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WHC0v8AAAAASUVORK5CYII=', 'base64');
+}
+
+async function fetchWithRetries(targetUrl, requestHeaders, retries = 0) {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            return await fetchContentWithType(targetUrl, requestHeaders);
+        } catch (error) {
+            lastError = error;
+            if (attempt < retries) {
+                logDebug(`重试图片请求 (${attempt + 1}/${retries}): ${targetUrl}`);
+            }
+        }
+    }
+    throw lastError;
 }
 
 async function fetchContentWithType(targetUrl, requestHeaders) {
@@ -373,7 +412,21 @@ export default async function handler(req, res) {
         console.info(`开始处理目标 URL 的代理请求: ${targetUrl}`);
 
         // --- 获取并处理目标内容 ---
-        const { content, contentType, responseHeaders, isBinary } = await fetchContentWithType(targetUrl, req.headers);
+        const shouldUseImageFallback = isDoubanImageUrl(targetUrl);
+        const cached = shouldUseImageFallback ? imageCache.get(targetUrl) : null;
+        if (cached && cached.expiresAt > Date.now()) {
+            res.status(200)
+                .setHeader('Content-Type', cached.contentType)
+                .setHeader('Cache-Control', getImageCacheHeaders())
+                .send(cached.body);
+            return;
+        }
+
+        const { content, contentType, responseHeaders, isBinary } = await fetchWithRetries(
+            targetUrl,
+            req.headers,
+            shouldUseImageFallback ? DOUBAN_IMAGE_RETRIES : 0
+        );
 
         // --- 如果是 M3U8，处理并返回 ---
         if (isM3u8Content(content, contentType)) {
@@ -404,7 +457,15 @@ export default async function handler(req, res) {
                  }
              });
             // 设置我们自己的缓存策略
-            res.setHeader('Cache-Control', `public, max-age=${CACHE_TTL}`);
+            res.setHeader('Cache-Control', shouldUseImageFallback || isImageUrl(targetUrl) ? getImageCacheHeaders() : `public, max-age=${CACHE_TTL}`);
+
+            if (shouldUseImageFallback && isBinary) {
+                imageCache.set(targetUrl, {
+                    body: content,
+                    contentType: contentType || 'image/jpeg',
+                    expiresAt: Date.now() + IMAGE_CACHE_TTL * 1000
+                });
+            }
 
             // 发送原始（已解压）内容
             res.status(200).send(isBinary ? content : content);
@@ -427,6 +488,13 @@ export default async function handler(req, res) {
 
         // 尝试从错误对象获取状态码，否则默认为 500
         const statusCode = error.status || 500;
+        if (targetUrl && isDoubanImageUrl(targetUrl) && !res.headersSent) {
+            res.status(200)
+                .setHeader('Content-Type', 'image/png')
+                .setHeader('Cache-Control', getImageCacheHeaders())
+                .send(getPlaceholderBuffer());
+            return;
+        }
 
         // 确保在发送错误响应前没有发送过响应头
         if (!res.headersSent) {
