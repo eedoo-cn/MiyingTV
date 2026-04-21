@@ -355,10 +355,19 @@ function initPlayer(videoUrl) {
     }
 
     console.log('初始化播放器:', videoUrl);
+    const playerRoot = document.getElementById('player');
+    if (!playerRoot) {
+        showError('播放器容器不存在');
+        return;
+    }
 
     // 销毁旧实例
     if (art) {
-        art.destroy();
+        try {
+            art.destroy();
+        } catch (e) {
+            console.warn('销毁旧播放器实例出错:', e);
+        }
         art = null;
     }
     if (currentHls && currentHls.destroy) {
@@ -368,6 +377,19 @@ function initPlayer(videoUrl) {
             console.warn('销毁旧HLS实例出错:', e);
         }
         currentHls = null;
+    }
+
+    // 清空占位内容，避免旧 DOM 残留干扰 DPlayer 渲染
+    playerRoot.innerHTML = '';
+    playerRoot.classList.remove('player-placeholder');
+    playerRoot.style.aspectRatio = '16 / 9';
+    playerRoot.style.height = 'auto';
+    playerRoot.style.backgroundColor = '#000';
+
+    if (typeof window.DPlayer !== 'function' && typeof DPlayer !== 'function') {
+        console.error('DPlayer 未正确加载');
+        showError('播放器资源加载失败，请刷新页面重试');
+        return;
     }
 
     // 配置HLS.js选项
@@ -399,22 +421,28 @@ function initPlayer(videoUrl) {
         liveDurationInfinity: false
     };
 
-    art = new DPlayer({
-        container: document.getElementById('player'),
-        theme: '#23ade5',
-        lang: navigator.language.toLowerCase(),
-        autoplay: true,
-        screenshot: true,
-        airplay: true,
-        hotkey: true,
-        mutex: true,
-        volume: 0.8,
-        playbackSpeed: [0.5, 0.75, 1, 1.25, 1.5, 2],
-        video: {
-            url: videoUrl,
-            type: 'customHls',
-            customType: {
-                customHls: function (video) {
+    const DPlayerCtor = window.DPlayer || DPlayer;
+    const playerLang = ['zh-cn', 'zh-tw', 'en'].includes((navigator.language || '').toLowerCase())
+        ? navigator.language.toLowerCase()
+        : 'zh-cn';
+
+    try {
+        art = new DPlayerCtor({
+            container: playerRoot,
+            theme: '#23ade5',
+            lang: playerLang,
+            autoplay: true,
+            screenshot: true,
+            airplay: true,
+            hotkey: true,
+            mutex: true,
+            volume: 0.8,
+            playbackSpeed: [0.5, 0.75, 1, 1.25, 1.5, 2],
+            video: {
+                url: videoUrl,
+                type: 'customHls',
+                customType: {
+                    customHls: function (video) {
                     // 清理之前的HLS实例
                     if (currentHls && currentHls.destroy) {
                         try {
@@ -533,9 +561,14 @@ function initPlayer(videoUrl) {
                         document.getElementById('loading').style.display = 'none';
                     });
                 }
+                }
             }
-        }
-    });
+        });
+    } catch (error) {
+        console.error('DPlayer 初始化失败:', error);
+        showError('播放器初始化失败，请刷新页面重试');
+        return;
+    }
     window.dp = art;
 
     const playerContainer = document.getElementById('playerContainer');
