@@ -52,6 +52,7 @@ let doubanMovieTvCurrentSwitch = 'movie';
 let doubanCurrentTag = '热门';
 let doubanPageStart = 0;
 const doubanPageSize = 16; // 一次显示的项目数量
+const DOUBAN_CACHE_TTL = 30 * 60 * 1000; // 豆瓣数据缓存30分钟
 
 // 初始化豆瓣功能
 function initDouban() {
@@ -435,13 +436,39 @@ function renderRecommend(tag, pageLimit, pageStart) {
             container.innerHTML = `
                 <div class="col-span-full text-center py-8">
                     <div class="text-red-400">❌ 获取豆瓣数据失败，请稍后重试</div>
-                    <div class="text-gray-500 text-sm mt-2">提示：使用VPN可能有助于解决此问题</div>
+                    <div class="text-gray-500 text-sm mt-2">提示：豆瓣接口偶尔会波动，稍后刷新通常可恢复</div>
                 </div>
             `;
         });
 }
 
 async function fetchDoubanData(url) {
+    const cacheKey = `doubanCache:${url}`;
+    const getCachedDoubanData = () => {
+        try {
+            const raw = localStorage.getItem(cacheKey);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || !parsed.timestamp || !parsed.data) return null;
+            if (Date.now() - parsed.timestamp > DOUBAN_CACHE_TTL) return null;
+            return parsed.data;
+        } catch (e) {
+            console.warn('读取豆瓣缓存失败:', e);
+            return null;
+        }
+    };
+
+    const setCachedDoubanData = (data) => {
+        try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+                timestamp: Date.now(),
+                data
+            }));
+        } catch (e) {
+            console.warn('写入豆瓣缓存失败:', e);
+        }
+    };
+
     // 添加超时控制
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
@@ -457,16 +484,29 @@ async function fetchDoubanData(url) {
     };
 
     try {
-        // 尝试直接访问（豆瓣API可能允许部分CORS请求）
-        const response = await fetch(PROXY_URL + encodeURIComponent(url), fetchOptions);
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+        let lastError = null;
+        let response = null;
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                response = await fetch(PROXY_URL + encodeURIComponent(url), fetchOptions);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                break;
+            } catch (error) {
+                lastError = error;
+                if (attempt === 1) throw error;
+            }
         }
-        
-        return await response.json();
+
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+        setCachedDoubanData(data);
+        return data;
     } catch (err) {
+        clearTimeout(timeoutId);
         console.error("豆瓣 API 请求失败（直接代理）：", err);
         
         // 失败后尝试备用方法：作为备选
@@ -483,12 +523,19 @@ async function fetchDoubanData(url) {
             
             // 解析原始内容
             if (data && data.contents) {
-                return JSON.parse(data.contents);
+                const parsed = JSON.parse(data.contents);
+                setCachedDoubanData(parsed);
+                return parsed;
             } else {
                 throw new Error("无法获取有效数据");
             }
         } catch (fallbackErr) {
             console.error("豆瓣 API 备用请求也失败：", fallbackErr);
+            const cachedData = getCachedDoubanData();
+            if (cachedData) {
+                console.warn('使用缓存的豆瓣数据:', url);
+                return cachedData;
+            }
             throw fallbackErr; // 向上抛出错误，让调用者处理
         }
     }
