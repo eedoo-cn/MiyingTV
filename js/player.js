@@ -90,7 +90,7 @@ window.addEventListener('load', function () {
 // 全局变量
 let currentVideoTitle = '';
 let currentEpisodeIndex = 0;
-let art = null; // 当前 DPlayer 实例，沿用原变量名以减少其余逻辑改动
+let playerInstance = null; // 当前 DPlayer 实例
 let currentHls = null; // 跟踪当前HLS实例
 let currentEpisodes = [];
 let episodesReversed = false;
@@ -277,12 +277,12 @@ function initializePageContent() {
 
     // 视频暂停时也保存
     const waitForVideo = setInterval(() => {
-        if (art && art.video) {
-            art.video.addEventListener('pause', saveCurrentProgress);
+        if (playerInstance && playerInstance.video) {
+            playerInstance.video.addEventListener('pause', saveCurrentProgress);
 
             // 新增：播放进度变化时节流保存
             let lastSave = 0;
-            art.video.addEventListener('timeupdate', function() {
+            playerInstance.video.addEventListener('timeupdate', function() {
                 const now = Date.now();
                 if (now - lastSave > 5000) { // 每5秒最多保存一次
                     saveCurrentProgress();
@@ -362,13 +362,13 @@ function initPlayer(videoUrl) {
     }
 
     // 销毁旧实例
-    if (art) {
+    if (playerInstance) {
         try {
-            art.destroy();
+            playerInstance.destroy();
         } catch (e) {
             console.warn('销毁旧播放器实例出错:', e);
         }
-        art = null;
+        playerInstance = null;
     }
     if (currentHls && currentHls.destroy) {
         try {
@@ -427,7 +427,7 @@ function initPlayer(videoUrl) {
         : 'zh-cn';
 
     try {
-        art = new DPlayerCtor({
+        playerInstance = new DPlayerCtor({
             container: playerRoot,
             theme: '#23ade5',
             lang: playerLang,
@@ -569,7 +569,7 @@ function initPlayer(videoUrl) {
         showError('播放器初始化失败，请刷新页面重试');
         return;
     }
-    window.dp = art;
+    window.dp = playerInstance;
 
     const playerContainer = document.getElementById('playerContainer');
     const togglePlayerFullscreen = () => {
@@ -611,29 +611,29 @@ function initPlayer(videoUrl) {
     fullscreenChangeHandler = handleFullscreenChange;
     document.addEventListener('fullscreenchange', fullscreenChangeHandler);
 
-    art.video.addEventListener('loadedmetadata', function() {
+    playerInstance.video.addEventListener('loadedmetadata', function() {
         document.getElementById('loading').style.display = 'none';
         videoHasEnded = false; // 视频加载时重置结束标志
         // 优先使用URL传递的position参数
         const urlParams = new URLSearchParams(window.location.search);
         const savedPosition = parseInt(urlParams.get('position') || '0');
 
-        if (savedPosition > 10 && savedPosition < art.video.duration - 2) {
-            art.video.currentTime = savedPosition;
+        if (savedPosition > 10 && savedPosition < playerInstance.video.duration - 2) {
+            playerInstance.video.currentTime = savedPosition;
             showPositionRestoreHint(savedPosition);
         } else {
             try {
                 const progressKey = 'videoProgress_' + getVideoId();
                 const progressStr = localStorage.getItem(progressKey);
-                if (progressStr && art.video.duration > 0) {
+                if (progressStr && playerInstance.video.duration > 0) {
                     const progress = JSON.parse(progressStr);
                     if (
                         progress &&
                         typeof progress.position === 'number' &&
                         progress.position > 10 &&
-                        progress.position < art.video.duration - 2
+                        progress.position < playerInstance.video.duration - 2
                     ) {
-                        art.video.currentTime = progress.position;
+                        playerInstance.video.currentTime = progress.position;
                         showPositionRestoreHint(progress.position);
                     }
                 }
@@ -647,7 +647,7 @@ function initPlayer(videoUrl) {
         startProgressSaveInterval();
     });
 
-    art.video.addEventListener('error', function (error) {
+    playerInstance.video.addEventListener('error', function (error) {
         if (window.isSwitchingVideo) {
             console.log('正在切换视频，忽略错误');
             return;
@@ -663,7 +663,7 @@ function initPlayer(videoUrl) {
         showError('视频播放失败: ' + ((error && error.message) || '未知错误'));
     });
 
-    art.video.addEventListener('ended', function () {
+    playerInstance.video.addEventListener('ended', function () {
         videoHasEnded = true;
 
         clearVideoProgress();
@@ -679,7 +679,7 @@ function initPlayer(videoUrl) {
         }
     });
 
-    art.video.addEventListener('dblclick', togglePlayerFullscreen);
+    playerInstance.video.addEventListener('dblclick', togglePlayerFullscreen);
 
     // 兼容旧逻辑的全屏回调说明，实际依赖浏览器 fullscreenchange
     handleFullscreenChange();
@@ -690,7 +690,7 @@ function initPlayer(videoUrl) {
     // 10秒后如果仍在加载，但不立即显示错误
     setTimeout(function () {
         // 如果视频已经播放开始，则不显示错误
-        if (art && art.video && art.video.currentTime > 0) {
+        if (playerInstance && playerInstance.video && playerInstance.video.currentTime > 0) {
             return;
         }
 
@@ -753,7 +753,7 @@ function filterAdsFromM3U8(m3u8Content, strictMode = false) {
 // 显示错误
 function showError(message) {
     // 在视频已经播放的情况下不显示错误
-    if (art && art.video && art.video.currentTime > 1) {
+    if (playerInstance && playerInstance.video && playerInstance.video.currentTime > 1) {
         console.log('忽略错误:', message);
         return;
     }
@@ -842,7 +842,7 @@ function playEpisode(index) {
     }
 
     // 保存当前播放进度（如果正在播放）
-    if (art && art.video && !art.video.paused && !videoHasEnded) {
+    if (playerInstance && playerInstance.video && !playerInstance.video.paused && !videoHasEnded) {
         saveCurrentProgress();
     }
 
@@ -953,7 +953,7 @@ function updateOrderButton() {
 function setupProgressBarPreciseClicks() {
     // 查找DPlayer的进度条元素
     const progressBar = document.querySelector('.dplayer-bar-wrap');
-    if (!progressBar || !art || !art.video) return;
+    if (!progressBar || !playerInstance || !playerInstance.video) return;
 
     // 移除可能存在的旧事件监听器
     progressBar.removeEventListener('mousedown', handleProgressBarClick);
@@ -970,14 +970,14 @@ function setupProgressBarPreciseClicks() {
 
 // 处理进度条点击
 function handleProgressBarClick(e) {
-    if (!art || !art.video) return;
+    if (!playerInstance || !playerInstance.video) return;
 
     // 计算点击位置相对于进度条的比例
     const rect = e.currentTarget.getBoundingClientRect();
     const percentage = (e.clientX - rect.left) / rect.width;
 
     // 计算点击位置对应的视频时间
-    const duration = art.video.duration;
+    const duration = playerInstance.video.duration;
     let clickTime = percentage * duration;
 
     // 处理视频接近结尾的情况
@@ -997,22 +997,22 @@ function handleProgressBarClick(e) {
     e.stopPropagation();
 
     // 直接设置视频时间
-    if (typeof art.seek === 'function') {
-        art.seek(clickTime);
+    if (typeof playerInstance.seek === 'function') {
+        playerInstance.seek(clickTime);
     } else {
-        art.video.currentTime = clickTime;
+        playerInstance.video.currentTime = clickTime;
     }
 }
 
 // 处理移动端触摸事件
 function handleProgressBarTouch(e) {
-    if (!art || !art.video || !e.touches[0]) return;
+    if (!playerInstance || !playerInstance.video || !e.touches[0]) return;
 
     const touch = e.touches[0];
     const rect = e.currentTarget.getBoundingClientRect();
     const percentage = (touch.clientX - rect.left) / rect.width;
 
-    const duration = art.video.duration;
+    const duration = playerInstance.video.duration;
     let clickTime = percentage * duration;
 
     // 处理视频接近结尾的情况
@@ -1026,10 +1026,10 @@ function handleProgressBarTouch(e) {
     console.log(`进度条触摸: ${percentage.toFixed(4)}, 时间: ${clickTime.toFixed(2)}/${duration.toFixed(2)}`);
 
     e.stopPropagation();
-    if (typeof art.seek === 'function') {
-        art.seek(clickTime);
+    if (typeof playerInstance.seek === 'function') {
+        playerInstance.seek(clickTime);
     } else {
-        art.video.currentTime = clickTime;
+        playerInstance.video.currentTime = clickTime;
     }
 }
 
@@ -1050,9 +1050,9 @@ function saveToHistory() {
     let currentPosition = 0;
     let videoDuration = 0;
 
-    if (art && art.video) {
-        currentPosition = art.video.currentTime;
-        videoDuration = art.video.duration;
+    if (playerInstance && playerInstance.video) {
+        currentPosition = playerInstance.video.currentTime;
+        videoDuration = playerInstance.video.duration;
     }
 
     // 构建要保存的视频信息对象
@@ -1177,9 +1177,9 @@ function startProgressSaveInterval() {
 
 // 保存当前播放进度
 function saveCurrentProgress() {
-    if (!art || !art.video) return;
-    const currentTime = art.video.currentTime;
-    const duration = art.video.duration;
+    if (!playerInstance || !playerInstance.video) return;
+    const currentTime = playerInstance.video.currentTime;
+    const duration = playerInstance.video.duration;
     if (!duration || currentTime < 1) return;
 
     // 在localStorage中保存进度
@@ -1224,7 +1224,7 @@ function saveCurrentProgress() {
 
 // 设置移动端长按三倍速播放功能
 function setupLongPressSpeedControl() {
-    if (!art || !art.video) return;
+    if (!playerInstance || !playerInstance.video) return;
 
     const playerElement = document.getElementById('player');
     let longPressTimer = null;
@@ -1255,24 +1255,24 @@ function setupLongPressSpeedControl() {
     // 触摸开始事件
     playerElement.addEventListener('touchstart', function (e) {
         // 检查视频是否正在播放，如果没有播放则不触发长按功能
-        if (art.video.paused) {
+        if (playerInstance.video.paused) {
             return; // 视频暂停时不触发长按功能
         }
 
         // 保存原始播放速度
-        originalPlaybackRate = art.video.playbackRate;
+        originalPlaybackRate = playerInstance.video.playbackRate;
 
         // 设置长按计时器
         longPressTimer = setTimeout(() => {
             // 再次检查视频是否仍在播放
-            if (art.video.paused) {
+            if (playerInstance.video.paused) {
                 clearTimeout(longPressTimer);
                 longPressTimer = null;
                 return;
             }
 
             // 长按超过500ms，设置为3倍速
-            art.video.playbackRate = 3.0;
+            playerInstance.video.playbackRate = 3.0;
             isLongPress = true;
             showSpeedHint(3.0);
 
@@ -1291,7 +1291,7 @@ function setupLongPressSpeedControl() {
 
         // 如果是长按状态，恢复原始播放速度
         if (isLongPress) {
-            art.video.playbackRate = originalPlaybackRate;
+            playerInstance.video.playbackRate = originalPlaybackRate;
             isLongPress = false;
             showSpeedHint(originalPlaybackRate);
 
@@ -1311,7 +1311,7 @@ function setupLongPressSpeedControl() {
 
         // 如果是长按状态，恢复原始播放速度
         if (isLongPress) {
-            art.video.playbackRate = originalPlaybackRate;
+            playerInstance.video.playbackRate = originalPlaybackRate;
             isLongPress = false;
         }
     });
@@ -1324,9 +1324,9 @@ function setupLongPressSpeedControl() {
     }, { passive: false });
 
     // 视频暂停时取消长按状态
-    art.video.addEventListener('pause', function () {
+    playerInstance.video.addEventListener('pause', function () {
         if (isLongPress) {
-            art.video.playbackRate = originalPlaybackRate;
+            playerInstance.video.playbackRate = originalPlaybackRate;
             isLongPress = false;
         }
 
