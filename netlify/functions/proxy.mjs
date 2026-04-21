@@ -103,10 +103,13 @@ async function fetchContentWithType(targetUrl, requestHeaders) {
             const err = new Error(`HTTP error ${response.status}: ${response.statusText}. URL: ${targetUrl}. Body: ${errorBody.substring(0, 200)}`);
             err.status = response.status; throw err;
         }
-        const content = await response.text();
         const contentType = response.headers.get('content-type') || '';
+        const isM3u8 = shouldTreatAsM3u8(targetUrl, contentType);
+        const content = isM3u8
+            ? await response.text()
+            : Buffer.from(await response.arrayBuffer());
         logDebug(`Fetch success: ${targetUrl}, Content-Type: ${contentType}, Length: ${content.length}`);
-        return { content, contentType, responseHeaders: response.headers };
+        return { content, contentType, responseHeaders: response.headers, isBinary: !isM3u8 };
     } catch (error) {
         logDebug(`Fetch exception for ${targetUrl}: ${error.message}`);
         throw new Error(`Failed to fetch target URL ${targetUrl}: ${error.message}`);
@@ -116,6 +119,10 @@ async function fetchContentWithType(targetUrl, requestHeaders) {
 function isM3u8Content(content, contentType) {
     if (contentType && (contentType.includes('application/vnd.apple.mpegurl') || contentType.includes('application/x-mpegurl') || contentType.includes('audio/mpegurl'))) { return true; }
     return content && typeof content === 'string' && content.trim().startsWith('#EXTM3U');
+}
+
+function shouldTreatAsM3u8(targetUrl, contentType) {
+    return isM3u8Content('', contentType) || /\.m3u8($|\?)/i.test(targetUrl);
 }
 
 function processKeyLine(line, baseUrl) { return line.replace(/URI="([^"]+)"/, (match, uri) => { const absoluteUri = resolveUrl(baseUrl, uri); logDebug(`Processing KEY URI: Original='${uri}', Absolute='${absoluteUri}'`); return `URI="${rewriteUrlToProxy(absoluteUri)}"`; }); }
@@ -211,7 +218,7 @@ export const handler = async (event, context) => {
 
     try {
         // Fetch Original Content (Pass Netlify event headers)
-        const { content, contentType, responseHeaders } = await fetchContentWithType(targetUrl, event.headers);
+        const { content, contentType, responseHeaders, isBinary } = await fetchContentWithType(targetUrl, event.headers);
 
         // --- Process if M3U8 ---
         if (isM3u8Content(content, contentType)) {
@@ -250,8 +257,8 @@ export const handler = async (event, context) => {
             return {
                 statusCode: 200,
                 headers: netlifyHeaders,
-                body: content, // Body as string
-                // isBase64Encoded: false, // Set true only if returning binary data as base64
+                body: isBinary ? content.toString('base64') : content,
+                isBase64Encoded: isBinary,
             };
         }
 

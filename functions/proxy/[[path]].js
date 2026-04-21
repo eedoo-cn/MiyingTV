@@ -195,11 +195,13 @@ export async function onRequest(context) {
                  throw new Error(`HTTP error ${response.status}: ${response.statusText}. URL: ${targetUrl}. Body: ${errorBody.substring(0, 150)}`);
             }
 
-            // 读取响应内容为文本
-            const content = await response.text();
             const contentType = response.headers.get('Content-Type') || '';
+            const isM3u8 = shouldTreatAsM3u8(targetUrl, contentType);
+            const content = isM3u8
+                ? await response.text()
+                : new Uint8Array(await response.arrayBuffer());
             logDebug(`请求成功: ${targetUrl}, Content-Type: ${contentType}, 内容长度: ${content.length}`);
-            return { content, contentType, responseHeaders: response.headers }; // 同时返回原始响应头
+            return { content, contentType, responseHeaders: response.headers, isBinary: !isM3u8 }; // 同时返回原始响应头
 
         } catch (error) {
              logDebug(`请求彻底失败: ${targetUrl}: ${error.message}`);
@@ -216,6 +218,10 @@ export async function onRequest(context) {
         }
         // 检查内容本身是否以 #EXTM3U 开头
         return content && typeof content === 'string' && content.trim().startsWith('#EXTM3U');
+    }
+
+    function shouldTreatAsM3u8(targetUrl, contentType) {
+        return isM3u8Content('', contentType) || /\.m3u8($|\?)/i.test(targetUrl);
     }
 
     // 判断是否是媒体文件 (根据扩展名和 Content-Type) - 这部分在此代理中似乎未使用，但保留
@@ -452,8 +458,7 @@ export async function onRequest(context) {
                         const processedM3u8 = await processM3u8Content(targetUrl, content, 0, env);
                         return createM3u8Response(processedM3u8);
                     } else {
-                        logDebug(`从缓存返回非 M3U8 内容: ${targetUrl}`);
-                        return createResponse(content, 200, new Headers(headers));
+                        logDebug(`检测到非 M3U8 缓存内容，跳过缓存并重新请求源站: ${targetUrl}`);
                     }
                 } else {
                      logDebug(`[缓存未命中] 原始内容: ${targetUrl}`);
@@ -465,10 +470,10 @@ export async function onRequest(context) {
         }
 
         // --- 实际请求 ---
-        const { content, contentType, responseHeaders } = await fetchContentWithType(targetUrl);
+        const { content, contentType, responseHeaders, isBinary } = await fetchContentWithType(targetUrl);
 
         // --- 写入缓存 (KV) ---
-        if (kvNamespace) {
+        if (kvNamespace && !isBinary) {
              try {
                  const headersToCache = {};
                  responseHeaders.forEach((value, key) => { headersToCache[key.toLowerCase()] = value; });

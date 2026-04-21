@@ -163,12 +163,14 @@ async function fetchContentWithType(targetUrl, requestHeaders) {
             throw err; // 抛出错误
         }
 
-        // 读取响应内容
-        const content = await response.text();
         const contentType = response.headers.get('content-type') || '';
+        const isM3u8 = shouldTreatAsM3u8(targetUrl, contentType);
+        const content = isM3u8
+            ? await response.text()
+            : Buffer.from(await response.arrayBuffer());
         logDebug(`请求成功: ${targetUrl}, Content-Type: ${contentType}, 内容长度: ${content.length}`);
         // 返回结果
-        return { content, contentType, responseHeaders: response.headers };
+        return { content, contentType, responseHeaders: response.headers, isBinary: !isM3u8 };
 
     } catch (error) {
         // 捕获 fetch 本身的错误（网络、超时等）或上面抛出的 HTTP 错误
@@ -183,6 +185,10 @@ function isM3u8Content(content, contentType) {
         return true;
     }
     return content && typeof content === 'string' && content.trim().startsWith('#EXTM3U');
+}
+
+function shouldTreatAsM3u8(targetUrl, contentType) {
+    return isM3u8Content('', contentType) || /\.m3u8($|\?)/i.test(targetUrl);
 }
 
 function processKeyLine(line, baseUrl) {
@@ -367,7 +373,7 @@ export default async function handler(req, res) {
         console.info(`开始处理目标 URL 的代理请求: ${targetUrl}`);
 
         // --- 获取并处理目标内容 ---
-        const { content, contentType, responseHeaders } = await fetchContentWithType(targetUrl, req.headers);
+        const { content, contentType, responseHeaders, isBinary } = await fetchContentWithType(targetUrl, req.headers);
 
         // --- 如果是 M3U8，处理并返回 ---
         if (isM3u8Content(content, contentType)) {
@@ -401,7 +407,7 @@ export default async function handler(req, res) {
             res.setHeader('Cache-Control', `public, max-age=${CACHE_TTL}`);
 
             // 发送原始（已解压）内容
-            res.status(200).send(content);
+            res.status(200).send(isBinary ? content : content);
         }
 
     // ---- 结束主处理逻辑的 try 块 ----

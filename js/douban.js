@@ -523,17 +523,18 @@ function renderDoubanCards(data, container) {
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
             
-            // 处理图片URL
-            // 使用 weserv 代理处理豆瓣图片，绕过防盗链
-const weservProxyUrl = `https://images.weserv.nl/?url=${encodeURIComponent(item.cover)}`;
-
-// 为不同设备优化卡片布局
-card.innerHTML = `
-    <div class="relative w-full aspect-[2/3] overflow-hidden cursor-pointer" onclick="fillAndSearchWithDouban('${safeTitle}')">
-        <img src="${weservProxyUrl}" alt="${safeTitle}" 
-            class="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
-            onerror="this.onerror=null; this.src='${item.cover}'; this.referrerPolicy='no-referrer';"
-            loading="lazy">
+            // 豆瓣图片统一走站内代理，避免直连带来的防盗链/Referer 问题
+            const originalCoverUrl = item.cover;
+            const proxiedCoverUrl = PROXY_URL + encodeURIComponent(originalCoverUrl);
+            const fallbackCoverUrl = 'image/nomedia.png';
+            
+            // 为不同设备优化卡片布局
+            card.innerHTML = `
+                <div class="relative w-full aspect-[2/3] overflow-hidden cursor-pointer" onclick="fillAndSearchWithDouban('${safeTitle}')">
+                    <img src="${proxiedCoverUrl}" alt="${safeTitle}" 
+                        class="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                        onerror="this.onerror=null; this.src='${fallbackCoverUrl}'; this.classList.remove('object-cover'); this.classList.add('object-contain');"
+                        loading="lazy">
                     <div class="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-60"></div>
                     <div class="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-sm">
                         <span class="text-yellow-400">★</span> ${safeRate}

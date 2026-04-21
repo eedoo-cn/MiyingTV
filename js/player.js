@@ -389,74 +389,9 @@ function initPlayer(videoUrl) {
         liveSyncDurationCount: 3,
         liveDurationInfinity: false
     };
-// ====== VAST 广告逻辑开始 ======
-const adContainer = document.getElementById('ad-container');
-
-function playVastAd(callback) {
-    adContainer.style.display = 'block';
-
-    const adDisplayContainer = new google.ima.AdDisplayContainer(adContainer);
-    const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-
-    const adsRequest = new google.ima.AdsRequest();
-    adsRequest.adTagUrl = 'https://s.magsrv.com/v1/vast.php?idzone=5883894';
-
-    adsRequest.linearAdSlotWidth = adContainer.offsetWidth;
-    adsRequest.linearAdSlotHeight = adContainer.offsetHeight;
-
-    adsLoader.addEventListener(
-        google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
-        function (adsManagerLoadedEvent) {
-            const adsManager = adsManagerLoadedEvent.getAdsManager();
-
-            try {
-                adsManager.init(
-                    adContainer.offsetWidth,
-                    adContainer.offsetHeight,
-                    google.ima.ViewMode.NORMAL
-                );
-                adsManager.start();
-            } catch (e) {
-                console.log('广告播放失败', e);
-                callback();
-            }
-
-            adsManager.addEventListener(
-                google.ima.AdEvent.Type.COMPLETE,
-                function () {
-                    adContainer.style.display = 'none';
-                    callback();
-                }
-            );
-        }
-    );
-
-    adsLoader.addEventListener(
-        google.ima.AdErrorEvent.Type.AD_ERROR,
-        function () {
-            adContainer.style.display = 'none';
-            callback();
-        }
-    );
-
-    adDisplayContainer.initialize();
-    adsLoader.requestAds(adsRequest);
-}
-// ====== VAST 广告逻辑结束 ======
 
     // Create new ArtPlayer instance
-    playVastAd(function () {
-
     art = new Artplayer({
-        container: '#player',
-        url: videoUrl,
-        type: 'm3u8',
-        title: videoTitle,
-        autoplay: true,
-        // 其他配置不动
-    });
-
-});
         container: '#player',
         url: videoUrl,
         type: 'm3u8',

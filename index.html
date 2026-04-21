@@ -7,7 +7,7 @@
     <meta name="description" content="找片就用 MiyingTV。一个聚合全网多源免费内容的视频搜索平台，为您提供极速、安全、免注册、无干扰广告的在线观影服务。">
     <meta name="keywords" content="电影在线看, 免费追剧, 视频搜索引擎, 蓝光影视搜索, 免费VIP电影, 无广告电影, 免费高清视频流媒体">
     <meta name="author" content="MiyingTV Team">
-    <meta name="referrer" content="no-referrer">
+
     <!-- Favicon -->
     <link rel="icon" href="image/logo.png">
     <link rel="apple-touch-icon" href="image/logo-black.png">
@@ -360,20 +360,7 @@
             </div>
         </div>
     </div>
-<script>
-document.addEventListener('error', function (e) {
-    var elem = e.target;
-    if (elem.tagName.toLowerCase() === 'img') {
-        var src = elem.src;
-        // 检查是否为豆瓣域名且尚未经过代理处理
-        if (src.includes('doubanio.com') && !src.includes('images.weserv.nl')) {
-            console.warn('检测到豆瓣图片加载失败，正在尝试通过 weserv 代理镜像...', src);
-            // 拼接 weserv 代理地址，并加上缓存及压缩参数（可选）
-            elem.src = 'https://images.weserv.nl/?url=' + encodeURIComponent(src) + '&default=' + encodeURIComponent(src);
-        }
-    }
-}, true); // 使用事件捕获，确保能监听到所有图片的 error 事件
-</script>
+
 
 
     <!-- 错误提示框 -->
