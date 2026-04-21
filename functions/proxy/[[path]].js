@@ -26,8 +26,6 @@ const MEDIA_CONTENT_TYPES = ['video/', 'audio/', 'image/'];
 export async function onRequest(context) {
     const { request, env, next, waitUntil } = context; // next 和 waitUntil 可能需要
     const url = new URL(request.url);
-    const IMAGE_CACHE_TTL = parseInt(env.IMAGE_CACHE_TTL || '604800');
-    const DOUBAN_IMAGE_RETRIES = parseInt(env.DOUBAN_IMAGE_RETRIES || '2');
 
     // --- 从环境变量读取配置 ---
     const DEBUG_ENABLED = (env.DEBUG === 'true');
@@ -174,43 +172,6 @@ export async function onRequest(context) {
         return `/proxy/${encodeURIComponent(targetUrl)}`;
     }
 
-    function isImageUrl(targetUrl) {
-        return /\.(jpg|jpeg|png|gif|webp|bmp|svg|avif|heic)(\?|$)/i.test(targetUrl);
-    }
-
-    function isDoubanImageUrl(targetUrl) {
-        try {
-            const parsedUrl = new URL(targetUrl);
-            return /(^|\.)doubanio\.com$/i.test(parsedUrl.hostname) && isImageUrl(targetUrl);
-        } catch {
-            return false;
-        }
-    }
-
-    function getImageCacheHeaders(baseHeaders = {}) {
-        const headers = new Headers(baseHeaders);
-        headers.set('Cache-Control', `public, max-age=86400, s-maxage=${IMAGE_CACHE_TTL}, stale-while-revalidate=86400, stale-if-error=2592000`);
-        return headers;
-    }
-
-    function getPlaceholderResponse() {
-        return Response.redirect(`${url.origin}/image/nomedia.png`, 302);
-    }
-
-    async function fetchWithRetries(targetUrl, retries = 0) {
-        let lastError;
-        for (let attempt = 0; attempt <= retries; attempt++) {
-            try {
-                return await fetchContentWithType(targetUrl);
-            } catch (error) {
-                lastError = error;
-                if (attempt < retries) {
-                    logDebug(`重试图片请求 (${attempt + 1}/${retries}): ${targetUrl}`);
-                }
-            }
-        }
-        throw lastError;
-    }
 
     // 获取远程内容及其类型
     async function fetchContentWithType(targetUrl) {
@@ -471,13 +432,6 @@ export async function onRequest(context) {
 
         logDebug(`收到代理请求: ${targetUrl}`);
 
-        if (isDoubanImageUrl(targetUrl) && request.method === 'GET') {
-            const cachedResponse = await caches.default.match(request);
-            if (cachedResponse) {
-                return cachedResponse;
-            }
-        }
-
         // --- 缓存检查 (KV) ---
         const cacheKey = `proxy_raw:${targetUrl}`; // 使用原始内容的缓存键
         let kvNamespace = null;
@@ -517,10 +471,7 @@ export async function onRequest(context) {
         }
 
         // --- 实际请求 ---
-        const { content, contentType, responseHeaders, isBinary } = await fetchWithRetries(
-            targetUrl,
-            isDoubanImageUrl(targetUrl) ? DOUBAN_IMAGE_RETRIES : 0
-        );
+        const { content, contentType, responseHeaders, isBinary } = await fetchContentWithType(targetUrl);
 
         // --- 写入缓存 (KV) ---
         if (kvNamespace && !isBinary) {
@@ -544,29 +495,17 @@ export async function onRequest(context) {
             return createM3u8Response(processedM3u8);
         } else {
             logDebug(`内容不是 M3U8 (类型: ${contentType})，直接返回: ${targetUrl}`);
-            const finalHeaders = isDoubanImageUrl(targetUrl) || isImageUrl(targetUrl)
-                ? getImageCacheHeaders(responseHeaders)
-                : new Headers(responseHeaders);
-            if (!isDoubanImageUrl(targetUrl) && !isImageUrl(targetUrl)) {
-                finalHeaders.set('Cache-Control', `public, max-age=${CACHE_TTL}`);
-            }
+            const finalHeaders = new Headers(responseHeaders);
+            finalHeaders.set('Cache-Control', `public, max-age=${CACHE_TTL}`);
             // 添加 CORS 头，确保非 M3U8 内容也能跨域访问（例如图片、字幕文件等）
             finalHeaders.set("Access-Control-Allow-Origin", "*");
             finalHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
             finalHeaders.set("Access-Control-Allow-Headers", "*");
-            const response = createResponse(content, 200, finalHeaders);
-            if (isDoubanImageUrl(targetUrl) && request.method === 'GET') {
-                waitUntil(caches.default.put(request, response.clone()));
-            }
-            return response;
+            return createResponse(content, 200, finalHeaders);
         }
 
     } catch (error) {
         logDebug(`处理代理请求时发生严重错误: ${error.message} \n ${error.stack}`);
-        const targetUrl = getTargetUrlFromPath(url.pathname);
-        if (targetUrl && isDoubanImageUrl(targetUrl)) {
-            return getPlaceholderResponse();
-        }
         return createResponse(`代理处理错误: ${error.message}`, 500);
     }
 }

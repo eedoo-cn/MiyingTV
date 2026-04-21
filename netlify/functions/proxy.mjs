@@ -7,9 +7,6 @@ import { URL } from 'url'; // Use Node.js built-in URL
 const DEBUG_ENABLED = process.env.DEBUG === 'true';
 const CACHE_TTL = parseInt(process.env.CACHE_TTL || '86400', 10); // Default 24 hours
 const MAX_RECURSION = parseInt(process.env.MAX_RECURSION || '5', 10); // Default 5 levels
-const IMAGE_CACHE_TTL = parseInt(process.env.IMAGE_CACHE_TTL || '604800', 10);
-const DOUBAN_IMAGE_RETRIES = parseInt(process.env.DOUBAN_IMAGE_RETRIES || '2', 10);
-const imageCache = new Map();
 
 // --- User Agent Handling ---
 let USER_AGENTS = [
@@ -89,26 +86,6 @@ function rewriteUrlToProxy(targetUrl) {
 
 function getRandomUserAgent() { return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]; }
 
-function isImageUrl(targetUrl) { return /\.(jpg|jpeg|png|gif|webp|bmp|svg|avif|heic)(\?|$)/i.test(targetUrl); }
-function isDoubanImageUrl(targetUrl) {
-    try { const parsed = new URL(targetUrl); return /(^|\.)doubanio\.com$/i.test(parsed.hostname) && isImageUrl(targetUrl); }
-    catch { return false; }
-}
-function getImageCacheHeaders() { return `public, max-age=86400, s-maxage=${IMAGE_CACHE_TTL}, stale-while-revalidate=86400, stale-if-error=2592000`; }
-function getPlaceholderBody() {
-    return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WHC0v8AAAAASUVORK5CYII=', 'base64').toString('base64');
-}
-async function fetchWithRetries(targetUrl, requestHeaders, retries = 0) {
-    let lastError;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try { return await fetchContentWithType(targetUrl, requestHeaders); }
-        catch (error) {
-            lastError = error;
-            if (attempt < retries) logDebug(`Retrying image request (${attempt + 1}/${retries}): ${targetUrl}`);
-        }
-    }
-    throw lastError;
-}
 
 async function fetchContentWithType(targetUrl, requestHeaders) {
     const headers = {
@@ -242,22 +219,7 @@ export const handler = async (event, context) => {
 
     try {
         // Fetch Original Content (Pass Netlify event headers)
-        const shouldUseImageFallback = isDoubanImageUrl(targetUrl);
-        const cached = shouldUseImageFallback ? imageCache.get(targetUrl) : null;
-        if (cached && cached.expiresAt > Date.now()) {
-            return {
-                statusCode: 200,
-                headers: { ...corsHeaders, 'Content-Type': cached.contentType, 'Cache-Control': getImageCacheHeaders() },
-                body: cached.body.toString('base64'),
-                isBase64Encoded: true,
-            };
-        }
-
-        const { content, contentType, responseHeaders, isBinary } = await fetchWithRetries(
-            targetUrl,
-            event.headers,
-            shouldUseImageFallback ? DOUBAN_IMAGE_RETRIES : 0
-        );
+        const { content, contentType, responseHeaders, isBinary } = await fetchContentWithType(targetUrl, event.headers);
 
         // --- Process if M3U8 ---
         if (isM3u8Content(content, contentType)) {
@@ -291,15 +253,7 @@ export const handler = async (event, context) => {
                      netlifyHeaders[key] = value; // Add other original headers
                  }
              });
-            netlifyHeaders['Cache-Control'] = shouldUseImageFallback || isImageUrl(targetUrl) ? getImageCacheHeaders() : `public, max-age=${CACHE_TTL}`; // Set our cache policy
-
-            if (shouldUseImageFallback && isBinary) {
-                imageCache.set(targetUrl, {
-                    body: content,
-                    contentType: contentType || 'image/jpeg',
-                    expiresAt: Date.now() + IMAGE_CACHE_TTL * 1000
-                });
-            }
+            netlifyHeaders['Cache-Control'] = `public, max-age=${CACHE_TTL}`; // Set our cache policy
 
             return {
                 statusCode: 200,
@@ -314,15 +268,6 @@ export const handler = async (event, context) => {
         console.error(`[Proxy Error Stack Netlify] ${error.stack}`); // Log full stack
 
         const statusCode = error.status || 500; // Get status from error if available
-
-        if (targetUrl && isDoubanImageUrl(targetUrl)) {
-            return {
-                statusCode: 200,
-                headers: { ...corsHeaders, 'Content-Type': 'image/png', 'Cache-Control': getImageCacheHeaders() },
-                body: getPlaceholderBody(),
-                isBase64Encoded: true,
-            };
-        }
 
         return {
             statusCode: statusCode,

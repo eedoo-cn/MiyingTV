@@ -22,9 +22,6 @@ const config = {
   userAgent: process.env.USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
   debug: process.env.DEBUG === 'true'
 };
-const IMAGE_CACHE_TTL_SECONDS = parseInt(process.env.IMAGE_CACHE_TTL || '604800', 10);
-const DOUBAN_IMAGE_RETRIES = parseInt(process.env.DOUBAN_IMAGE_RETRIES || '2', 10);
-const imageCache = new Map();
 
 const log = (...args) => {
   if (config.debug) {
@@ -119,31 +116,6 @@ function isValidUrl(urlString) {
   }
 }
 
-function isImageUrl(targetUrl) {
-  return /\.(jpg|jpeg|png|gif|webp|bmp|svg|avif|heic)(\?|$)/i.test(targetUrl);
-}
-
-function isDoubanImageUrl(targetUrl) {
-  try {
-    const parsed = new URL(targetUrl);
-    return /(^|\.)doubanio\.com$/i.test(parsed.hostname) && isImageUrl(targetUrl);
-  } catch {
-    return false;
-  }
-}
-
-function getImageCacheHeaders(headers = {}) {
-  return {
-    ...headers,
-    'Cache-Control': `public, max-age=86400, s-maxage=${IMAGE_CACHE_TTL_SECONDS}, stale-while-revalidate=86400, stale-if-error=2592000`
-  };
-}
-
-function sendPlaceholderImage(res) {
-  res.set(getImageCacheHeaders({ 'Content-Type': 'image/png' }));
-  res.sendFile(path.join(__dirname, 'image', 'nomedia.png'));
-}
-
 // 代理路由
 app.get('/proxy/:encodedUrl', async (req, res) => {
   try {
@@ -157,17 +129,8 @@ app.get('/proxy/:encodedUrl', async (req, res) => {
 
     log(`代理请求: ${targetUrl}`);
 
-    if (isDoubanImageUrl(targetUrl)) {
-      const cached = imageCache.get(targetUrl);
-      if (cached && cached.expiresAt > Date.now()) {
-        res.set(getImageCacheHeaders(cached.headers));
-        res.send(cached.body);
-        return;
-      }
-    }
-
     // 添加请求超时和重试逻辑
-    const maxRetries = isDoubanImageUrl(targetUrl) ? Math.max(config.maxRetries, DOUBAN_IMAGE_RETRIES) : config.maxRetries;
+    const maxRetries = config.maxRetries;
     let retries = 0;
     
     const makeRequest = async () => {
@@ -201,31 +164,12 @@ app.get('/proxy/:encodedUrl', async (req, res) => {
     ).split(',');
     
     sensitiveHeaders.forEach(header => delete headers[header]);
-    const finalHeaders = isImageUrl(targetUrl) ? getImageCacheHeaders(headers) : headers;
-    res.set(finalHeaders);
-
-    if (isDoubanImageUrl(targetUrl)) {
-      const chunks = [];
-      response.data.on('data', chunk => chunks.push(chunk));
-      response.data.on('end', () => {
-        imageCache.set(targetUrl, {
-          body: Buffer.concat(chunks),
-          headers: finalHeaders,
-          expiresAt: Date.now() + IMAGE_CACHE_TTL_SECONDS * 1000
-        });
-      });
-    }
+    res.set(headers);
 
     // 管道传输响应流
     response.data.pipe(res);
   } catch (error) {
     console.error('代理请求错误:', error.message);
-    try {
-      const targetUrl = decodeURIComponent(req.params.encodedUrl || '');
-      if (isDoubanImageUrl(targetUrl)) {
-        return sendPlaceholderImage(res);
-      }
-    } catch {}
     if (error.response) {
       res.status(error.response.status || 500);
       error.response.data.pipe(res);
