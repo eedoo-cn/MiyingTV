@@ -251,6 +251,14 @@ const PLAYER_CONFIG = {
                 }
             }
         }
+    },
+    pauseAd: {
+        enabled: true,
+        imageUrl: 'https://img10.360buyimg.com/imagetools/jfs/t1/160315/37/3541/161972/600661f2Eb1a1101f/622b38d650d382a1.jpg!q70.webp',
+        clickUrl: 'https://jingfen.jd.com/item?u_act_p=union-activity&union_page_id=20032',
+        title: '精选优惠推荐',
+        description: '暂停一下，看看这条精选优惠',
+        openInNewTab: true
     }
 };
 

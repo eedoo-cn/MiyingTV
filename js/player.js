@@ -105,6 +105,7 @@ let fullscreenChangeHandler = null; // 跟踪全屏事件，避免重复绑定
 let adController = null; // DPlayer 广告控制器
 let contentAutoplayPending = false; // 等待广告播放完后恢复主内容播放
 let contentManifestReady = false; // 主内容清单是否就绪
+let pauseAdElements = null; // 暂停广告层
 
 // 页面加载
 document.addEventListener('DOMContentLoaded', function () {
@@ -353,6 +354,93 @@ function showShortcutHint(text, direction) {
     }, 2000);
 }
 
+function ensurePauseAdOverlay() {
+    if (pauseAdElements || !PLAYER_CONFIG.pauseAd || !PLAYER_CONFIG.pauseAd.enabled) {
+        return;
+    }
+
+    const playerWrapper = document.querySelector('#playerContainer .relative');
+    if (!playerWrapper) {
+        return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'pause-ad-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.innerHTML = `
+        <div class="pause-ad-card">
+            <button type="button" class="pause-ad-close" aria-label="关闭暂停广告">×</button>
+            <a class="pause-ad-link" rel="noopener sponsored">
+                <img class="pause-ad-image" alt="暂停广告">
+                <div class="pause-ad-content">
+                    <div class="pause-ad-copy">
+                        <span class="pause-ad-badge">广告</span>
+                        <h3 class="pause-ad-title"></h3>
+                        <p class="pause-ad-description"></p>
+                    </div>
+                    <span class="pause-ad-cta">查看详情</span>
+                </div>
+            </a>
+        </div>
+    `;
+
+    playerWrapper.appendChild(overlay);
+
+    const link = overlay.querySelector('.pause-ad-link');
+    const image = overlay.querySelector('.pause-ad-image');
+    const title = overlay.querySelector('.pause-ad-title');
+    const description = overlay.querySelector('.pause-ad-description');
+    const closeButton = overlay.querySelector('.pause-ad-close');
+    const config = PLAYER_CONFIG.pauseAd;
+
+    image.src = config.imageUrl;
+    link.href = config.clickUrl;
+    if (config.openInNewTab !== false) {
+        link.target = '_blank';
+    }
+    title.textContent = config.title || '精选推荐';
+    description.textContent = config.description || '';
+
+    closeButton.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        hidePauseAd();
+    });
+
+    pauseAdElements = { overlay, link, image, title, description, closeButton };
+}
+
+function showPauseAd() {
+    if (!PLAYER_CONFIG.pauseAd || !PLAYER_CONFIG.pauseAd.enabled) {
+        return;
+    }
+    if (!playerInstance || !playerInstance.video) {
+        return;
+    }
+    if (adController && adController.isAdPlaying()) {
+        return;
+    }
+    if (videoHasEnded || playerInstance.video.currentTime <= 0.1) {
+        return;
+    }
+
+    ensurePauseAdOverlay();
+    if (!pauseAdElements) {
+        return;
+    }
+
+    pauseAdElements.overlay.classList.add('is-active');
+    pauseAdElements.overlay.setAttribute('aria-hidden', 'false');
+}
+
+function hidePauseAd() {
+    if (!pauseAdElements) {
+        return;
+    }
+    pauseAdElements.overlay.classList.remove('is-active');
+    pauseAdElements.overlay.setAttribute('aria-hidden', 'true');
+}
+
 // 初始化播放器
 function initPlayer(videoUrl) {
     if (!videoUrl) {
@@ -390,6 +478,7 @@ function initPlayer(videoUrl) {
 
     contentAutoplayPending = false;
     contentManifestReady = false;
+    hidePauseAd();
 
     // 清空占位内容，避免旧 DOM 残留干扰 DPlayer 渲染
     playerRoot.innerHTML = '';
@@ -597,6 +686,8 @@ function initPlayer(videoUrl) {
         window.dpAdController = adController;
     }
 
+    ensurePauseAdOverlay();
+
     const playerContainer = document.getElementById('playerContainer');
     const togglePlayerFullscreen = () => {
         const fullscreenTarget = document.fullscreenElement || document.webkitFullscreenElement;
@@ -640,6 +731,7 @@ function initPlayer(videoUrl) {
     playerInstance.video.addEventListener('loadedmetadata', function() {
         document.getElementById('loading').style.display = 'none';
         videoHasEnded = false; // 视频加载时重置结束标志
+        hidePauseAd();
         // 优先使用URL传递的position参数
         const urlParams = new URLSearchParams(window.location.search);
         const savedPosition = parseInt(urlParams.get('position') || '0');
@@ -696,6 +788,7 @@ function initPlayer(videoUrl) {
         }
 
         videoHasEnded = true;
+        hidePauseAd();
 
         clearVideoProgress();
 
@@ -711,6 +804,18 @@ function initPlayer(videoUrl) {
     });
 
     playerInstance.video.addEventListener('dblclick', togglePlayerFullscreen);
+    playerInstance.video.addEventListener('play', hidePauseAd);
+    playerInstance.video.addEventListener('playing', hidePauseAd);
+    playerInstance.video.addEventListener('pause', function () {
+        setTimeout(() => {
+            if (!playerInstance || !playerInstance.video) {
+                return;
+            }
+            if (playerInstance.video.paused) {
+                showPauseAd();
+            }
+        }, 80);
+    });
 
     // 兼容旧逻辑的全屏回调说明，实际依赖浏览器 fullscreenchange
     handleFullscreenChange();
