@@ -76,7 +76,7 @@ body, html {
 .pause-ad-overlay {
     position: absolute;
     inset: 0;
-    z-index: 170;
+    z-index: 260;
     display: none;
     align-items: center;
     justify-content: center;
@@ -86,6 +86,12 @@ body, html {
 }
 .pause-ad-overlay.is-active {
     display: flex;
+}
+.pause-ad-overlay,
+.pause-ad-card,
+.pause-ad-link,
+.pause-ad-close {
+    pointer-events: auto;
 }
 .pause-ad-card {
     position: relative;
