@@ -228,7 +228,7 @@ const PLAYER_CONFIG = {
     adFilteringEnabled: true, // 默认开启分片广告过滤
     adFilteringStorage: 'adFilteringEnabled', // 存储广告过滤设置的键名
     ads: {
-        enabled: false, // 填入 VAST tag 后再开启
+        enabled: true,
         debug: false,
         requestTimeout: 8000,
         wrapperMaxDepth: 5,
@@ -240,7 +240,9 @@ const PLAYER_CONFIG = {
         slots: {
             preroll: {
                 enabled: true,
-                tagUrls: [],
+                tagUrls: [
+                    'https://s.magsrv.com/v1/vast.php?idzone=5909102'
+                ],
                 frequency: {
                     storageKey: 'miying_dplayer_ad_frequency',
                     capId: 'preroll',
