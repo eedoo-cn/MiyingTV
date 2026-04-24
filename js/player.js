@@ -441,6 +441,17 @@ function hidePauseAd() {
     pauseAdElements.overlay.setAttribute('aria-hidden', 'true');
 }
 
+function schedulePauseAdDisplay(delay = 80) {
+    setTimeout(() => {
+        if (!playerInstance || !playerInstance.video) {
+            return;
+        }
+        if (playerInstance.video.paused) {
+            showPauseAd();
+        }
+    }, delay);
+}
+
 // 初始化播放器
 function initPlayer(videoUrl) {
     if (!videoUrl) {
@@ -807,15 +818,15 @@ function initPlayer(videoUrl) {
     playerInstance.video.addEventListener('play', hidePauseAd);
     playerInstance.video.addEventListener('playing', hidePauseAd);
     playerInstance.video.addEventListener('pause', function () {
-        setTimeout(() => {
-            if (!playerInstance || !playerInstance.video) {
-                return;
-            }
-            if (playerInstance.video.paused) {
-                showPauseAd();
-            }
-        }, 80);
+        schedulePauseAdDisplay(80);
     });
+
+    if (typeof playerInstance.on === 'function') {
+        playerInstance.on('pause', function () {
+            schedulePauseAdDisplay(80);
+        });
+        playerInstance.on('play', hidePauseAd);
+    }
 
     // 兼容旧逻辑的全屏回调说明，实际依赖浏览器 fullscreenchange
     handleFullscreenChange();
