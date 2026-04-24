@@ -61,6 +61,103 @@ body, html {
     font-size: 48px;
     margin-bottom: 10px;
 }
+.vast-ad-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 180;
+    display: none;
+    overflow: hidden;
+    border-radius: 8px;
+    background: radial-gradient(circle at top, rgba(18, 28, 45, 0.75), rgba(0, 0, 0, 0.96));
+}
+.vast-ad-overlay.is-active {
+    display: block;
+}
+.vast-ad-video,
+.vast-ad-click-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+.vast-ad-video {
+    object-fit: contain;
+    background: #000;
+}
+.vast-ad-click-layer {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.vast-ad-header,
+.vast-ad-footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    pointer-events: none;
+}
+.vast-ad-header {
+    top: 0;
+    justify-content: flex-start;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+}
+.vast-ad-footer {
+    bottom: 0;
+    justify-content: flex-end;
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0));
+}
+.vast-ad-badge,
+.vast-ad-countdown {
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(10, 20, 34, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.vast-ad-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.vast-ad-cta,
+.vast-ad-skip {
+    pointer-events: auto;
+    border: 0;
+    border-radius: 999px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+}
+.vast-ad-cta {
+    background: rgba(35, 173, 229, 0.92);
+}
+.vast-ad-skip {
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.vast-ad-skip[disabled] {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+.ad-break-active .dplayer-controller,
+.ad-break-active .dplayer-bar-wrap,
+.ad-break-active .dplayer-menu,
+.ad-break-active .dplayer-mask {
+    pointer-events: none !important;
+}
+.ad-break-active .dplayer-icons-right,
+.ad-break-active .dplayer-icons-left {
+    opacity: 0.3;
+}
 .episode-active {
     background-color: #3b82f6 !important;
     border-color: #60a5fa !important;
@@ -168,6 +265,18 @@ input:checked + .slider:before {
 
 /* 新增：移动端响应式样式 */
 @media (max-width: 640px) {
+    .vast-ad-header,
+    .vast-ad-footer {
+        gap: 8px;
+        padding: 10px 12px;
+        flex-wrap: wrap;
+    }
+    .vast-ad-footer {
+        justify-content: space-between;
+    }
+    .vast-ad-title {
+        max-width: 100%;
+    }
     .episode-grid {
         max-height: 40vh; /* 移动端增加集数列表高度 */
     }

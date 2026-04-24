@@ -226,7 +226,30 @@ const PLAYER_CONFIG = {
     filterAds: true,  // 是否启用广告过滤
     autoPlayNext: true,  // 默认启用自动连播功能
     adFilteringEnabled: true, // 默认开启分片广告过滤
-    adFilteringStorage: 'adFilteringEnabled' // 存储广告过滤设置的键名
+    adFilteringStorage: 'adFilteringEnabled', // 存储广告过滤设置的键名
+    ads: {
+        enabled: false, // 填入 VAST tag 后再开启
+        debug: false,
+        requestTimeout: 8000,
+        wrapperMaxDepth: 5,
+        skipAfter: 5, // 5 秒后允许跳过
+        seekGuardTolerance: 0.35,
+        useProxyForVast: true,
+        useProxyForMedia: false,
+        trackingEnabled: true,
+        slots: {
+            preroll: {
+                enabled: true,
+                tagUrls: [],
+                frequency: {
+                    storageKey: 'miying_dplayer_ad_frequency',
+                    capId: 'preroll',
+                    maxImpressions: 2,
+                    windowMs: 60 * 60 * 1000
+                }
+            }
+        }
+    }
 };
 
 // 增加错误信息本地化

@@ -102,6 +102,9 @@ let adFilteringEnabled = true; // 默认开启广告过滤
 let progressSaveInterval = null; // 定期保存进度的计时器
 let currentVideoUrl = ''; // 记录当前实际的视频URL
 let fullscreenChangeHandler = null; // 跟踪全屏事件，避免重复绑定
+let adController = null; // DPlayer 广告控制器
+let contentAutoplayPending = false; // 等待广告播放完后恢复主内容播放
+let contentManifestReady = false; // 主内容清单是否就绪
 
 // 页面加载
 document.addEventListener('DOMContentLoaded', function () {
@@ -297,6 +300,8 @@ function initializePageContent() {
 
 // 处理键盘快捷键
 function handleKeyboardShortcuts(e) {
+    if (adController && adController.isAdPlaying()) return;
+
     // 忽略输入框中的按键事件
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -370,6 +375,10 @@ function initPlayer(videoUrl) {
         }
         playerInstance = null;
     }
+    if (adController && typeof adController.destroy === 'function') {
+        adController.destroy();
+        adController = null;
+    }
     if (currentHls && currentHls.destroy) {
         try {
             currentHls.destroy();
@@ -378,6 +387,9 @@ function initPlayer(videoUrl) {
         }
         currentHls = null;
     }
+
+    contentAutoplayPending = false;
+    contentManifestReady = false;
 
     // 清空占位内容，避免旧 DOM 残留干扰 DPlayer 渲染
     playerRoot.innerHTML = '';
@@ -431,7 +443,7 @@ function initPlayer(videoUrl) {
             container: playerRoot,
             theme: '#23ade5',
             lang: playerLang,
-            autoplay: true,
+            autoplay: false,
             screenshot: true,
             airplay: true,
             hotkey: true,
@@ -498,9 +510,8 @@ function initPlayer(videoUrl) {
                     video.disableRemotePlayback = false;
 
                     hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                        video.play().catch(e => {
-                            console.warn('自动播放被阻止:', e);
-                        });
+                        contentManifestReady = true;
+                        tryStartMainContentPlayback('manifest-parsed');
                     });
 
                     hls.on(Hls.Events.ERROR, function (event, data) {
@@ -570,6 +581,21 @@ function initPlayer(videoUrl) {
         return;
     }
     window.dp = playerInstance;
+
+    if (typeof window.DPlayerAdController === 'function') {
+        adController = new window.DPlayerAdController({
+            player: playerInstance,
+            playerRoot,
+            wrapper: playerRoot.parentElement,
+            config: PLAYER_CONFIG.ads || {},
+            slotContext: {
+                title: currentVideoTitle,
+                episodeIndex: currentEpisodeIndex,
+                contentUrl: currentVideoUrl
+            }
+        });
+        window.dpAdController = adController;
+    }
 
     const playerContainer = document.getElementById('playerContainer');
     const togglePlayerFullscreen = () => {
@@ -645,6 +671,7 @@ function initPlayer(videoUrl) {
         setupProgressBarPreciseClicks();
         setTimeout(saveToHistory, 3000);
         startProgressSaveInterval();
+        tryStartMainContentPlayback('loadedmetadata');
     });
 
     playerInstance.video.addEventListener('error', function (error) {
@@ -664,6 +691,10 @@ function initPlayer(videoUrl) {
     });
 
     playerInstance.video.addEventListener('ended', function () {
+        if (adController && adController.isAdPlaying()) {
+            return;
+        }
+
         videoHasEnded = true;
 
         clearVideoProgress();
@@ -687,6 +718,8 @@ function initPlayer(videoUrl) {
     // 添加移动端长按三倍速播放功能
     setupLongPressSpeedControl();
 
+    startMainPlaybackFlow();
+
     // 10秒后如果仍在加载，但不立即显示错误
     setTimeout(function () {
         // 如果视频已经播放开始，则不显示错误
@@ -703,6 +736,46 @@ function initPlayer(videoUrl) {
             `;
         }
     }, 10000);
+}
+
+function startMainPlaybackFlow() {
+    contentAutoplayPending = true;
+
+    if (adController && adController.isSlotEnabled('preroll')) {
+        adController.playSlot('preroll')
+            .catch((error) => {
+                console.warn('前贴片广告播放失败，回退主内容:', error);
+            })
+            .finally(() => {
+                requestMainContentPlayback('preroll-finished');
+            });
+        return;
+    }
+
+    requestMainContentPlayback('no-preroll');
+}
+
+function requestMainContentPlayback(reason) {
+    contentAutoplayPending = true;
+    tryStartMainContentPlayback(reason);
+}
+
+function tryStartMainContentPlayback(reason) {
+    if (!contentAutoplayPending || !contentManifestReady) {
+        return;
+    }
+    if (!playerInstance || !playerInstance.video) {
+        return;
+    }
+    if (adController && adController.isAdPlaying()) {
+        return;
+    }
+
+    contentAutoplayPending = false;
+    playerInstance.video.play().catch((error) => {
+        console.warn(`主内容自动播放被阻止 (${reason || 'unknown'})`, error);
+        contentAutoplayPending = true;
+    });
 }
 
 // 自定义M3U8 Loader用于过滤广告
@@ -971,6 +1044,11 @@ function setupProgressBarPreciseClicks() {
 // 处理进度条点击
 function handleProgressBarClick(e) {
     if (!playerInstance || !playerInstance.video) return;
+    if (adController && adController.isAdPlaying()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
 
     // 计算点击位置相对于进度条的比例
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1007,6 +1085,11 @@ function handleProgressBarClick(e) {
 // 处理移动端触摸事件
 function handleProgressBarTouch(e) {
     if (!playerInstance || !playerInstance.video || !e.touches[0]) return;
+    if (adController && adController.isAdPlaying()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
 
     const touch = e.touches[0];
     const rect = e.currentTarget.getBoundingClientRect();
